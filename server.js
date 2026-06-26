@@ -27,10 +27,12 @@ try {
 app.use(cors());
 app.use(bodyParser.json());
 
-// Helper: Extract last 9 digits starting with 6
+// Helper: Extract last 9 digits strictly for normal users
 const getLocalNumber = (phone) => {
     if (!phone) return "";
-    const clean = phone.replace(/\s/g, '');
+    // If it's a known admin keyword, don't slice it
+    if (phone === 'geesi' || phone === 'eesi') return phone;
+    const clean = phone.replace(/\D/g, ''); // Keep only digits
     return clean.length >= 9 ? clean.slice(-9) : clean;
 };
 
@@ -57,15 +59,21 @@ app.get('/', (req, res) => res.send("🚀 Sarifkeenna Backend Ultimate is Live!"
 
 app.post('/api/login', async (req, res) => {
     const { phoneNumber, password, mode } = req.body;
-    const localPhone = getLocalNumber(phoneNumber);
 
-    // SECURE ADMIN LOGIN
+    // 1. SECURE ADMIN LOGIN CHECK
     const secureAdminPassword = process.env.ADMIN_PASSWORD || 'Habo3290';
-    if ((phoneNumber === 'geesi' || localPhone === '6eesi') && password === secureAdminPassword) {
-        const token = jwt.sign({ phoneNumber: 'geesi', uid: 'ADMIN' }, SECRET_KEY, { expiresIn: '30d' });
-        return res.json({ token, uid: 'ADMIN' });
+    // Match any variant of admin login
+    if (phoneNumber === 'geesi' || phoneNumber === 'eesi' || phoneNumber === '6eesi') {
+        if (password === secureAdminPassword) {
+            const token = jwt.sign({ phoneNumber: 'geesi', uid: 'ADMIN' }, SECRET_KEY, { expiresIn: '30d' });
+            return res.json({ token, uid: 'ADMIN' });
+        } else {
+            return res.status(401).json({ message: "Incorrect Admin password." });
+        }
     }
 
+    // 2. NORMAL USER LOGIN CHECK
+    const localPhone = getLocalNumber(phoneNumber);
     if (localPhone.length < 9) {
         return res.status(400).json({ message: "Please complete the phone number." });
     }
@@ -102,7 +110,7 @@ app.post('/api/login', async (req, res) => {
         }
     } catch (e) {
         console.error("Login Error:", e.message);
-        res.status(500).json({ message: e.message });
+        res.status(500).json({ message: "Server error during login." });
     }
 });
 
