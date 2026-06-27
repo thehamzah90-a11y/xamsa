@@ -30,7 +30,7 @@ app.use(bodyParser.json());
 // Helper: Extract last 9 digits strictly for normal users
 const getLocalNumber = (phone) => {
     if (!phone) return "";
-    // If it's a known admin keyword, don't slice it
+    // If it's a known admin keyword variant, don't slice it
     if (phone === 'geesi' || phone === 'eesi' || phone === '6eesi') return phone;
     const clean = phone.replace(/\D/g, ''); // Keep only digits
     return clean.length >= 9 ? clean.slice(-9) : clean;
@@ -55,7 +55,7 @@ const isAdmin = (req, res, next) => {
 
 // --- API ENDPOINTS ---
 
-app.get('/', (req, res) => res.send("🚀 Sarifkeenna Backend Ultimate is Live!"));
+app.get('/', (req, res) => res.send("🚀 Sarifkeenna Backend Ultimate v1.3 is Live!"));
 
 app.post('/api/login', async (req, res) => {
     const { phoneNumber, password, mode } = req.body;
@@ -197,8 +197,15 @@ app.post('/api/admin/transaction/status', authenticateToken, isAdmin, async (req
         const userRef = db.ref('users/' + txData.userId + '/balance');
         const userSnapshot = await userRef.once('value');
         const current = userSnapshot.val() || 0;
-        let amt = (finalAmount !== undefined) ? finalAmount : txData.amount;
-        let newBalance = (txData.type.includes("Dir") || txData.type.includes("Bax")) ? current + amt : current - amt;
+
+        let amountToUse = (finalAmount !== undefined && finalAmount !== null) ? finalAmount : txData.amount;
+
+        let newBalance;
+        if (txData.type === "Kasoo Dir Zaad" || txData.type === "Kala Soo Bax 1xBet") {
+            newBalance = current + amountToUse;
+        } else {
+            newBalance = current - amountToUse;
+        }
         await userRef.set(newBalance);
         if(finalAmount !== undefined) await txRef.update({ amount: finalAmount });
     }
