@@ -1,7 +1,7 @@
 {
-  "name": "sarifkeena-backend-v1-9-3",
-  "version": "1.9.3",
-  "description": "v1.9.3 Advanced Forensic Empire - Master Stealth Backend",
+  "name": "sarifkeena-backend-v1-9-5",
+  "version": "1.9.5",
+  "description": "v1.9.5 Executive Empire - Master Stealth Backend",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
