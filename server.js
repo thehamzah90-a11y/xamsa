@@ -24,14 +24,14 @@ try {
             databaseURL: process.env.FIREBASE_DATABASE_URL
         });
         db = admin.database();
-        console.log("✅ v1.9.5 ADVANCED EMPIRE ONLINE.");
+        console.log("✅ v1.9.6 SUPREME EMPIRE ONLINE.");
     }
 } catch (error) { console.error("❌ DB Error:", error.message); }
 
 app.use(cors());
 app.use(bodyParser.json());
 
-// --- UTILS ---
+// --- SUPREME FORENSIC UTILS ---
 const normalizePhone = (p) => {
     if (!p) return "";
     const clean = p.toString().replace(/\D/g, '');
@@ -59,28 +59,30 @@ const updateVerifiedBalance = async (amount, type = 'ADD') => {
     });
 };
 
+const logBalanceChange = async (phoneNumber, amount, type, oldBal, newBal, reason, actor, details = {}) => {
+    const event = { ts: new Date().toISOString(), amount, type, oldBal, newBal, reason, actor, details };
+    await db.ref(`ledger/balance_logs/${phoneNumber}`).push().set(event);
+    await db.ref('global_forensics').push().set({ ...event, phoneNumber, action: `BAL_${type}` });
+};
+
 const triggerFraudAlert = async (type, actor, deviceId, details) => {
     const ref = db.ref('fraud_alerts').push();
-    await ref.set({
-        ts: new Date().toISOString(),
-        type, actor, deviceId, details,
-        status: 'ACTIVE'
-    });
+    await ref.set({ ts: new Date().toISOString(), type, actor, deviceId, details, status: 'ACTIVE' });
 };
 
 const logForensic = async (req, action, target, details = {}) => {
     try {
-        const ref = db.ref('activity_logs').push();
-        const asig = req.body.p_asig || "SYSTEM_STAMPED";
-        await ref.set({
+        const entry = {
             ts: new Date().toISOString(),
             actor: req.user ? req.user.phoneNumber : "SYSTEM",
             role: req.user ? req.user.role : "N/A",
             action, target,
             dna: req.user ? req.user.deviceId : "UNK",
-            asig,
+            asig: req.body.p_asig || "SYSTEM_STAMPED",
             details
-        });
+        };
+        await db.ref('activity_logs').push().set(entry);
+        await db.ref('global_forensics').push().set(entry);
     } catch (e) {}
 };
 
@@ -106,16 +108,14 @@ const isSupport = (req, res, next) => {
     else res.status(403).json({ message: "Access Denied" });
 };
 
-// --- v1.9.5 STRICT STEALTH AUTH ---
+// --- v1.9.6 SUPREME AUTH ---
 app.post('/api/v1/user/auth-access', async (req, res) => {
     try {
         const { phoneNumber, password, mode, deviceId, publicKey, pkg, sig } = req.body;
         const normalized = normalizePhone(phoneNumber);
 
-        const lockRef = db.ref('config/hardware_locks');
-        const lockSnap = await lockRef.once('value');
+        const lockSnap = await db.ref('config/hardware_locks').once('value');
         const locks = lockSnap.val() || {};
-
         if (locks.pkg && locks.pkg !== pkg) return res.status(403).json({ message: "Integrity Compromised" });
 
         const configSnap = await db.ref('config').once('value');
@@ -133,33 +133,28 @@ app.post('/api/v1/user/auth-access', async (req, res) => {
             if (password === SUPPORT_PASS) {
                 const currentDna = locks.support_dna ? locks.support_dna[phoneNumber] : null;
                 if (currentDna && currentDna !== deviceId) {
-                    await triggerFraudAlert("SUPPORT_COLLISION", phoneNumber, deviceId, { msg: "Attempt from unauthorized device" });
-                    return res.status(403).json({ message: "Device Locked to Other Phone" });
+                    await triggerFraudAlert("SUPPORT_COLLISION", phoneNumber, deviceId, { msg: "Device collision" });
+                    return res.status(403).json({ message: "Device Locked" });
                 }
-                if (publicKey) {
-                    await db.ref(`config/hardware_keys/${deviceId}`).set(publicKey);
-                    await db.ref(`config/hardware_locks/support_dna/${phoneNumber}`).set(deviceId);
-                }
-                const expiry = `${config.staffSessionHours || 12}h`;
-                const token = jwt.sign({ phoneNumber, role: 'SUPPORT', deviceId }, SECRET_KEY, { expiresIn: expiry });
+                if (publicKey) await db.ref(`config/hardware_keys/${deviceId}`).set(publicKey);
+                await db.ref(`config/hardware_locks/support_dna/${phoneNumber}`).set(deviceId);
+                const token = jwt.sign({ phoneNumber, role: 'SUPPORT', deviceId }, SECRET_KEY, { expiresIn: `${config.staffSessionHours || 12}h` });
                 return res.json({ token, role: 'SUPPORT' });
             }
         }
 
         if (phoneNumber === 'sensor_primary') {
             if (password === LISTENER_PASS) {
-                const activeListenerDna = locks.listener;
-                if (activeListenerDna && activeListenerDna !== deviceId) {
+                const activeDna = locks.listener;
+                if (activeDna && activeDna !== deviceId) {
                     await db.ref('config/gateway_secret').remove();
                     await db.ref('config/hardware_locks/listener_frozen').set(true);
-                    await triggerFraudAlert("LISTENER_COLLISION", "CRITICAL", deviceId, { msg: "Session hijacked, wiping secret!" });
-                    return res.status(403).json({ message: "CRITICAL: COLLISION DETECTED - SYSTEM FROZEN" });
+                    await triggerFraudAlert("LISTENER_HIJACK", "CRITICAL", deviceId, { msg: "Frozen" });
+                    return res.status(403).json({ message: "FROZEN" });
                 }
-                if (locks.listener_frozen) return res.status(403).json({ message: "SYSTEM FROZEN: CONTACT MASTER" });
-                if (publicKey) {
-                    await db.ref(`config/hardware_keys/${deviceId}`).set(publicKey);
-                    await db.ref(`config/hardware_locks/listener`).set(deviceId);
-                }
+                if (locks.listener_frozen) return res.status(403).json({ message: "CONTACT MASTER" });
+                if (publicKey) await db.ref(`config/hardware_keys/${deviceId}`).set(publicKey);
+                await db.ref(`config/hardware_locks/listener`).set(deviceId);
                 const token = jwt.sign({ phoneNumber: 'sensor_primary', role: 'LISTENER', deviceId }, SECRET_KEY, { expiresIn: '30d' });
                 return res.json({ token, role: 'LISTENER' });
             }
@@ -172,251 +167,111 @@ app.post('/api/v1/user/auth-access', async (req, res) => {
         if (mode === 'register') {
             if (user) return res.status(400).json({ message: "Duplicate" });
             const uid = "SK-" + Math.random().toString(36).substr(2, 6).toUpperCase();
-            await userRef.set({ uid, phoneNumber: normalized, password, balance: 0.0, status: 'PENDING', isReviewer: false, createdAt: new Date().toISOString(), dailyLimit: 250 });
-            return res.json({ message: "PENDING_ACTIVATION", uid });
+            await userRef.set({ uid, phoneNumber: normalized, password, balance: 0.0, status: 'PENDING', createdAt: new Date().toISOString() });
+            return res.json({ message: "PENDING", uid });
         } else {
             if (!user) return res.status(404).json({ message: "None" });
             if (user.password !== password) return res.status(401).json({ message: "Fail" });
-            if (user.status === 'FROZEN') return res.status(403).json({ message: "Account Locked" });
-
-            const token = jwt.sign({ phoneNumber: normalized, uid: user.uid, role: 'USER', isReviewer: user.isReviewer || false }, SECRET_KEY, { expiresIn: '30d' });
-            return res.json({ token, uid: user.uid, role: 'USER', isReviewer: user.isReviewer || false });
+            const token = jwt.sign({ phoneNumber: normalized, uid: user.uid, role: 'USER' }, SECRET_KEY, { expiresIn: '30d' });
+            return res.json({ token, uid: user.uid, role: 'USER' });
         }
-    } catch (e) { res.status(500).json({ message: "Err" }); }
+    } catch (e) { res.status(500).send("Err"); }
 });
 
-// --- CUSTOMER ENDPOINTS ---
+// --- DOSSIER & FORENSIC FEED ---
+app.get('/api/admin/user-dossier/:phone', authenticate, isSupport, async (req, res) => {
+    try {
+        const phone = normalizePhone(req.params.phone);
+        const userSnap = await db.ref('users/' + phone).once('value');
+        const txSnap = await db.ref('transactions').orderByChild('userId').equalTo(phone).limitToLast(100).once('value');
+        const logSnap = await db.ref('ledger/balance_logs/' + phone).limitToLast(50).once('value');
+        res.json({
+            profile: userSnap.val(),
+            transactions: Object.values(txSnap.val() || {}).reverse(),
+            balanceHistory: Object.values(logSnap.val() || {}).reverse()
+        });
+    } catch (e) { res.status(500).send("Err"); }
+});
+
+app.get('/api/admin/global-forensics', authenticate, isMaster, async (req, res) => {
+    try {
+        const snap = await db.ref('global_forensics').limitToLast(2000).once('value');
+        res.json(Object.values(snap.val() || {}).reverse());
+    } catch (e) { res.status(500).send("Err"); }
+});
+
+// --- PAYOUT (WITHDRAWAL) SYSTEM ---
+app.post('/api/admin/request-payout', authenticate, isSupport, async (req, res) => {
+    try {
+        const { targetPhone, amount, description } = req.body;
+        const ref = db.ref('payout_requests').push();
+        await ref.set({
+            ts: new Date().toISOString(),
+            phoneNumber: normalizePhone(targetPhone),
+            amount: parseFloat(amount),
+            description,
+            requestedBy: req.user.phoneNumber,
+            status: 'PENDING'
+        });
+        await logForensic(req, "PAYOUT_REQ", targetPhone, { amount, description });
+        res.json({ message: "OK" });
+    } catch (e) { res.status(500).send("Err"); }
+});
+
+// --- CUSTOMER CORE ---
 app.get('/api/balance', authenticate, async (req, res) => {
-    try {
-        const snap = await db.ref('users/' + req.user.phoneNumber + '/balance').once('value');
-        res.json({ balance: parseFloat(snap.val() || 0) });
-    } catch (e) { res.status(500).send("Err"); }
-});
-
-app.get('/api/transactions', authenticate, async (req, res) => {
-    try {
-        const snap = await db.ref('transactions').orderByChild('userId').equalTo(req.user.phoneNumber).limitToLast(20).once('value');
-        const txs = Object.values(snap.val() || {}).reverse();
-        res.json(txs);
-    } catch (e) { res.status(500).send("Err"); }
+    const snap = await db.ref('users/' + req.user.phoneNumber + '/balance').once('value');
+    res.json({ balance: parseFloat(snap.val() || 0) });
 });
 
 app.post('/api/v1/user/action-post', authenticate, async (req, res) => {
     try {
-        const { type, amount, uid } = req.body;
+        const { type, amount, uid, details } = req.body;
         const ref = db.ref('transactions').push();
         await ref.set({
             userId: req.user.phoneNumber,
             uid: uid || req.user.uid,
-            type,
-            amount: parseFloat(amount),
-            status: 'PENDING',
-            date: new Date().toISOString()
+            type, amount: parseFloat(amount), status: 'PENDING',
+            date: new Date().toISOString(), details: details || {}
         });
+        // Log all user activities (1xbet, wallet transfer requests, etc.) to forensics
+        await logForensic(req, "USER_ACTION", type, { amount, uid });
         res.json({ message: "SUCCESS" });
     } catch (e) { res.status(500).send("Err"); }
 });
 
-// --- SUPPORT ENDPOINTS ---
-app.get('/api/admin/pending-users', authenticate, isSupport, async (req, res) => {
-    try {
-        const snap = await db.ref('users').orderByChild('status').equalTo('PENDING').once('value');
-        res.json(snap.val() || {});
-    } catch (e) { res.status(500).send("Err"); }
-});
-
-app.post('/api/admin/user/activate', authenticate, isSupport, async (req, res) => {
-    try {
-        const { targetPhone } = req.body;
-        await db.ref('users/' + targetPhone).update({ status: 'ACTIVE' });
-        await logForensic(req, "ACTIVATE_USER", targetPhone);
-        res.json({ message: "OK" });
-    } catch (e) { res.status(500).send("Err"); }
-});
-
-app.get('/api/admin/all-users', authenticate, isSupport, async (req, res) => {
-    try {
-        const snap = await db.ref('users').once('value');
-        res.json(snap.val() || {});
-    } catch (e) { res.status(500).send("Err"); }
-});
-
-app.get('/api/admin/transactions', authenticate, isSupport, async (req, res) => {
-    try {
-        const snap = await db.ref('transactions').limitToLast(1000).once('value');
-        res.json(snap.val() || {});
-    } catch (e) { res.status(500).send("Err"); }
-});
-
-// --- CORE LOGIC: THE FORENSIC PULSE ---
-app.post('/api/v1/gateway/pulse', async (req, res) => {
-    const { p_v1, p_v2, refId, timestamp, deviceId, currency, p_sid, p_gst, reportedBalance, p_asig } = req.body;
-    try {
-        const frozenSnap = await db.ref('config/hardware_locks/listener_frozen').once('value');
-        if (frozenSnap.val()) return res.status(403).json({ message: "System Frozen" });
-
-        const keySnap = await db.ref(`config/hardware_keys/${deviceId}`).once('value');
-        const pubKey = keySnap.val();
-        if (pubKey) {
-            const dataToVerify = `${p_v1}|${p_v2}|${refId}|${timestamp}|${deviceId}|${currency}`;
-            if (!verifySignature(dataToVerify, p_asig, pubKey)) {
-                await triggerFraudAlert("CRYPTO_FAIL", "SENSOR", deviceId, { refId });
-                return res.status(403).json({ message: "Ghost Denied" });
-            }
-        }
-
-        const amount = parseFloat(p_v1);
-        const phone = normalizePhone(p_v2);
-        const bankBal = parseFloat(reportedBalance);
-
-        const userRef = db.ref('users/' + phone);
-        const userSnap = await userRef.once('value');
-        const user = userSnap.val() || {};
-
-        if (amount >= 100 || (user.dailyLimitUsage || 0) + amount > (user.dailyLimit || 250)) {
-            await db.ref('quarantine/' + refId).set({ ...req.body, reason: "LIMIT_BREACH", ts: new Date().toISOString() });
-            await triggerFraudAlert("SENSITIVITY_LIMIT", phone, deviceId, { amount });
-            return res.json({ message: "LIMIT_POPUPS_TRIGGERED" });
-        }
-
-        const currentVerified = await getVerifiedBalance();
-        const expected = currentVerified + amount;
-
-        if (Math.abs(expected - bankBal) < 0.01) {
-            await finalizeTransaction(phone, amount, refId, req.body, currentVerified, bankBal);
-            await db.ref('ledger/fail_streak').set(0);
-            return res.json({ message: "OK" });
-        } else {
-            const stateRef = db.ref('ledger/security_state');
-            const stateSnap = await stateRef.once('value');
-            const state = stateSnap.val() || { lastMismatch: 0, failStreak: 0 };
-
-            if (Date.now() - state.lastMismatch < 1800000 && state.failStreak >= 1) {
-                await db.ref('config/gateway_secret').remove();
-                await triggerFraudAlert("COOLING_RULE_VIOLATION", "SYSTEM", deviceId, { gap: bankBal - expected });
-                return res.json({ message: "GHOST_MODE_ACTIVE" });
-            }
-
-            await stateRef.update({ lastMismatch: Date.now(), failStreak: (state.failStreak || 0) + 1 });
-
-            const now = Date.now();
-            const reqSnap = await db.ref('transactions').orderByChild('status').equalTo('PENDING').once('value');
-            const pendingReqs = Object.values(reqSnap.val() || {}).filter(r => {
-                const rTs = new Date(r.date).getTime();
-                return rTs >= (now - 420000) && rTs <= (now - 240000);
-            });
-
-            const solved = pendingReqs.find(r => Math.abs((currentVerified + amount + r.amount) - bankBal) < 0.01);
-            if (solved) {
-                await finalizeTransaction(phone, amount, refId, req.body, currentVerified, bankBal, "CLUSTER_HEAL");
-                return res.json({ message: "OK" });
-            } else {
-                await db.ref('quarantine/' + refId).set({ ...req.body, reason: "MATH_FAILURE", ts: new Date().toISOString() });
-                return res.json({ message: "QUARANTINED" });
-            }
-        }
-    } catch (e) { res.status(500).send("Err"); }
-});
-
-async function finalizeTransaction(phone, amount, refId, raw, before, after, method = "AUTO") {
-    await updateVerifiedBalance(amount, 'ADD');
-    const txSnap = await db.ref('transactions').orderByChild('userId').equalTo(phone).once('value');
-    const txs = txSnap.val() || {};
-    let tid = Object.keys(txs).find(k => txs[k].status === 'PENDING' && Math.abs(txs[k].amount - amount) < 0.1);
-
-    if (tid) {
-        await db.ref('transactions/' + tid).update({
-            status: 'APPROVED', externalId: refId, approvedBy: '🤖 Sensor',
-            beforeBalance: before, afterBalance: after, method,
-            forensics: { dna: raw.deviceId, sid: raw.p_sid, gst: raw.p_gst, asig: raw.p_asig }
-        });
-        const userRef = db.ref('users/' + phone);
-        await userRef.transaction(u => {
-            if (u) {
-                u.balance = (u.balance || 0) + amount;
-                u.dailyLimitUsage = (u.dailyLimitUsage || 0) + amount;
-            }
-            return u;
-        });
-    }
-}
-
-// --- STAFF OPS ---
+// --- STAFF ACTIONS ---
 app.post('/api/v1/queue/update-state', authenticate, isSupport, async (req, res) => {
-    const { transactionId, status, finalAmount, externalId, p_asig } = req.body;
-    const deviceId = req.user.deviceId;
+    const { transactionId, status, finalAmount } = req.body;
     try {
-        const keySnap = await db.ref(`config/hardware_keys/${deviceId}`).once('value');
-        const pubKey = keySnap.val();
-        if (pubKey) {
-            const dataToVerify = `${transactionId}|${status}|${deviceId}`;
-            if (!verifySignature(dataToVerify, p_asig, pubKey)) {
-                if (req.user.role === 'SUPPORT') {
-                    await db.ref(`config/hardware_locks/support_dna/${req.user.phoneNumber}`).remove();
-                    await triggerFraudAlert("STAFF_CRYPTO_FAIL", req.user.phoneNumber, deviceId, { transactionId });
-                    return res.status(401).json({ message: "Unauthorized Session" });
-                }
-            }
-        }
-
         const txRef = db.ref('transactions/' + transactionId);
         const txSnap = await txRef.once('value');
         const txData = txSnap.val();
+
         if (status === 'APPROVED' && txData.status === 'PENDING') {
             const amt = parseFloat(finalAmount || txData.amount);
             const userRef = db.ref('users/' + txData.userId);
             const uSnap = await userRef.once('value');
-            const current = uSnap.val().balance || 0;
-            const isIntake = (txData.type.toLowerCase().includes("dir") || txData.type.toLowerCase().includes("saar"));
-            const newBal = isIntake ? current + amt : current - amt;
+            const oldBal = uSnap.val().balance || 0;
+
+            // Intake: Zaad/Sahal deposits. Outflow: Withdrawals/1xBet.
+            const isIntake = (txData.type.toLowerCase().includes("zaad") || txData.type.toLowerCase().includes("sahal") || txData.type.toLowerCase().includes("edahab"));
+            const newBal = isIntake ? oldBal + amt : oldBal - amt;
 
             await userRef.update({ balance: newBal });
-            await txRef.update({
-                status, amount: amt, approvedBy: req.user.phoneNumber,
-                beforeBalance: current, afterBalance: newBal, externalId: externalId || txData.externalId,
-                isManual: true, p_asig
-            });
-            await logForensic(req, "APPROVE_TX", txData.userId, { txId: transactionId, amount: amt });
+            await txRef.update({ status: 'APPROVED', amount: amt, approvedBy: req.user.phoneNumber, beforeBalance: oldBal, afterBalance: newBal });
+
+            await logBalanceChange(txData.userId, amt, isIntake ? 'CREDIT' : 'DEBIT', oldBal, newBal, `${txData.type} Approved`, req.user.phoneNumber, { txId: transactionId });
+            await logForensic(req, "APPROVE_TX", txData.userId, { type: txData.type, amount: amt });
         } else {
-            await txRef.update({ status, p_asig });
+            await txRef.update({ status });
+            await logForensic(req, "REJECT_TX", txData.userId, { txId: transactionId });
         }
         res.json({ message: "OK" });
     } catch (e) { res.status(500).send("Err"); }
 });
 
-// --- MASTER CONTROLS ---
-app.post('/api/v1/sys/control', authenticate, isMaster, async (req, res) => {
-    const { cmd, targetPhone, type, hardwareId, gatewayId, gatewayData } = req.body;
-    if (cmd === "UNFREEZE_SYSTEM") {
-        await db.ref('config/hardware_locks/listener_frozen').remove();
-        await db.ref('config/hardware_locks/listener').remove();
-    }
-    if (cmd === "RESET_STAFF_DNA") {
-        await db.ref(`config/hardware_locks/support_dna/${targetPhone}`).remove();
-    }
-    if (cmd === "UPSERT_GATEWAY") {
-        await db.ref(`config/gateways/${gatewayId}`).set(gatewayData);
-    }
-    if (cmd === "THEFT_WIPE") {
-        await db.ref('config/gateway_secret').remove();
-        await db.ref('config/hardware_locks').remove();
-        await db.ref('config/hardware_keys').remove();
-        await db.ref('config/anti_theft_active').set(true);
-    }
-    if (cmd === "RESET_THEFT") {
-        await db.ref('config/anti_theft_active').set(false);
-    }
-    res.json({ message: "OK" });
-});
-
-app.post('/api/admin/config-update', authenticate, isMaster, async (req, res) => {
-    try {
-        const { updates } = req.body;
-        await db.ref('config').update(updates);
-        res.json({ message: "OK" });
-    } catch (e) { res.status(500).send("Err"); }
-});
-
+// --- CONFIG & ADMIN ---
 app.get('/api/config', async (req, res) => {
     const snap = await db.ref('config').once('value');
     const c = snap.val() || {};
@@ -425,37 +280,16 @@ app.get('/api/config', async (req, res) => {
         minVersion: c.minVersion || "1.0",
         globalReviewerMode: c.globalReviewerMode || false,
         simulatorEnabled: c.simulatorEnabled || false,
-        staffSessionHours: c.staffSessionHours || 12,
-        instructions: c.instructions || "Welcome to Sarifkeenna. Please follow the guides.",
+        instructions: c.instructions || "",
         headingText: c.headingText || "SARIFKEENNA",
         media: c.media || {},
-        gateways: c.gateways || {
-            zaad: { name: "ZAAD", ussd: "*220*", auto: true, amountPattern: "([0-9.]+)\\$", senderPattern: "from\\s(6[0-9]{8})", refPattern: "Ref:([A-Z0-9]+)", balancePattern: "Balance\\sis\\s\\$([0-9.]+)" },
-            sahal: { name: "SAHAL", ussd: "*888*", auto: false, amountPattern: "\\$([0-9.]+)", senderPattern: "(6[0-9]{8})", refPattern: "Ref:([0-9]+)", balancePattern: "New\\sbalance\\sis\\s\\$([0-9.]+)" }
-        }
+        gateways: c.gateways || { zaad: { name: "ZAAD", ussd: "*220*", auto: true, amountPattern: "([0-9.]+)\\$", senderPattern: "from\\s(6[0-9]{8})", refPattern: "Ref:([A-Z0-9]+)", balancePattern: "Balance\\sis\\s\\$([0-9.]+)", outgoingPattern: "sent\\s\\$([0-9.]+)\\sto\\s(6[0-9]{8})" } }
     });
 });
 
-app.post('/api/v1/sys/simulate', authenticate, isMaster, async (req, res) => {
-    const snap = await db.ref('config/simulatorEnabled').once('value');
-    if (!snap.val()) return res.status(403).json({ message: "Simulator Disabled" });
-    const { smsAmount, smsBalance, pendingGaps } = req.body;
-    const currentVerified = await getVerifiedBalance();
-    let report = `Current DB: $${currentVerified}\nSMS Amount: $${smsAmount}\nReported Bal: $${smsBalance}\n`;
-    const gap = smsBalance - (currentVerified + smsAmount);
-    if (Math.abs(gap) < 0.01) report += "RESULT: PERFECT MATCH - Instant Approval.";
-    else {
-        report += `RESULT: MISMATCH ($${gap.toFixed(2)} gap).\n`;
-        const match = pendingGaps.find(g => Math.abs(g - gap) < 0.01);
-        if (match) report += `FOUND MATCH in cluster: $${match}. System would Auto-Heal.`;
-        else report += "NO MATCH. System would trigger QUARANTINE.";
-    }
-    res.json({ report });
-});
-
-app.get('/api/admin/fraud-alerts', authenticate, isMaster, async (req, res) => {
-    const snap = await db.ref('fraud_alerts').limitToLast(50).once('value');
-    res.json(snap.val() || {});
+app.post('/api/admin/config-update', authenticate, isMaster, async (req, res) => {
+    await db.ref('config').update(req.body);
+    res.json({ message: "OK" });
 });
 
 app.get('/api/admin/all-users', authenticate, isSupport, async (req, res) => {
@@ -463,13 +297,8 @@ app.get('/api/admin/all-users', authenticate, isSupport, async (req, res) => {
     res.json(snap.val() || {});
 });
 
-app.get('/api/admin/transactions', authenticate, isSupport, async (req, res) => {
-    const snap = await db.ref('transactions').limitToLast(1000).once('value');
-    res.json(snap.val() || {});
-});
-
 app.get('/api/admin/activity-logs', authenticate, isMaster, async (req, res) => {
-    const snap = await db.ref('activity_logs').limitToLast(500).once('value');
+    const snap = await db.ref('activity_logs').limitToLast(1000).once('value');
     res.json(snap.val() || {});
 });
 
@@ -478,4 +307,4 @@ app.post('/api/v1/ops/track-view', authenticate, isSupport, async (req, res) => 
     res.json({ message: "OK" });
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 v1.9.5 EMPIRE Active.`));
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 v1.9.6 SUPREME EMPIRE Active.`));
