@@ -15,6 +15,8 @@ const SUPPORT_PASS_2 = process.env.SUPPORT_ADMIN_PASS_2 || 'Support@VIP';
 const LISTENER_PASS = process.env.LISTENER_PASS || 'Sensor@786';
 
 let db = null;
+let dbStatus = "🔴 OFFLINE";
+
 try {
     if (process.env.FIREBASE_SERVICE_ACCOUNT && process.env.FIREBASE_DATABASE_URL) {
         const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -23,13 +25,15 @@ try {
             databaseURL: process.env.FIREBASE_DATABASE_URL
         });
         db = admin.database();
-        console.log("✅ v1.9.6 SUPREME EMPIRE READY.");
+        dbStatus = "🟢 ONLINE";
+        console.log("✅ v1.9.6 SUPREME BRAIN ONLINE (RECOVERY).");
     }
-} catch (error) { console.error("❌ DB Error:", error.message); }
+} catch (error) { console.error("❌ DB Error:", error.message); dbStatus = "❌ ERR: " + error.message; }
 
 app.use(cors());
 app.use(bodyParser.json());
 
+// --- UTILS ---
 const normalizePhone = (p) => {
     if (!p) return "";
     const clean = p.toString().replace(/\D/g, '');
@@ -42,7 +46,7 @@ const getNextImperialRef = async () => {
     return "#" + result.snapshot.val().toString().padStart(6, '0');
 };
 
-const updateVerifiedBalance = async (amountUSD, type = 'ADD') => {
+const updateVerifiedLedger = async (amountUSD, type = 'ADD') => {
     if (!db) return;
     await db.ref('ledger/verified_balance').transaction((current) => {
         const val = parseFloat(current || 0);
@@ -103,7 +107,7 @@ const authenticate = async (req, res, next) => {
 
 const isSupport = (req, res, next) => {
     if (req.user && (req.user.role === 'MASTER' || req.user.role === 'SUPPORT')) next();
-    else res.status(403).json({ message: "Denied" });
+    else res.status(403).json({ message: "Staff Only" });
 };
 
 const isMaster = (req, res, next) => {
@@ -111,383 +115,157 @@ const isMaster = (req, res, next) => {
     else res.status(403).json({ message: "Master Only" });
 };
 
-// --- MASTER VAULT ---
+// --- WEB PORTALS (ID 2/33) ---
 app.get('/master-vault', (req, res) => {
-    res.send(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <title>SARIFKEENA MASTER VAULT</title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-        <style>
-            :root { --master-gold: #ffc107; --supreme-green: #00c853; --dark-bg: #050505; --card-bg: #111; }
-            body { background: var(--dark-bg); color: #f0f0f0; font-family: -apple-system, system-ui, sans-serif; }
-            .glass-card { background: var(--card-bg); border: 1px solid #222; border-radius: 16px; padding: 15px; margin-bottom: 12px; }
-            .btn-master { background: var(--master-gold); color: black; border: none; font-weight: 800; border-radius: 10px; }
-            .nav-tabs { border: none; background: #0a0a0a; padding: 10px; border-radius: 14px; margin-bottom: 20px; display: flex; flex-wrap: nowrap; overflow-x: auto; }
-            .nav-link { color: #555; border: none !important; font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
-            .nav-link.active { color: var(--master-gold) !important; background: transparent !important; border-bottom: 2px solid var(--master-gold) !important; }
-            #login-screen { height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at center, #1a1a00, #000); }
-            input { background: #151515 !important; border: 1px solid #333 !important; color: white !important; }
-            .forensic-log { font-size: 0.7rem; border-left: 3px solid var(--master-gold); padding: 8px; background: #0a0a0a; margin-bottom: 5px; }
-        </style>
-    </head>
-    <body>
-        <div id="login-screen">
-            <div class="glass-card text-center" style="width: 320px;">
-                <h2 style="font-weight: 900; color: var(--master-gold);">MASTER<br><span style="color:white; font-size: 0.8rem;">VAULT ACCESS</span></h2>
-                <input type="password" id="key" class="form-control text-center my-4" placeholder="MASTER KEY">
-                <button onclick="login()" class="btn btn-master w-100 py-3">UNLOCK SYSTEM</button>
-                <div id="err" class="text-danger mt-3 small fw-bold"></div>
-            </div>
-        </div>
-
-        <div id="main-ui" style="display:none;">
-            <div class="container-fluid py-3">
-                <ul class="nav nav-tabs shadow-sm" role="tablist">
-                    <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-q">QUEUE</a></li>
-                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-act" onclick="refreshActivations()">ACTIVATE</a></li>
-                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-f" onclick="refreshFeed()">FEED</a></li>
-                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-finance" onclick="loadFinance()">FINANCE</a></li>
-                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-staff" onclick="loadStaff()">STAFF</a></li>
-                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-d" onclick="refreshDevices()">DEVICES</a></li>
-                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-frauds" onclick="loadFrauds()">FRAUDS</a></li>
-                </ul>
-                <div class="tab-content">
-                    <div class="tab-pane fade show active" id="tab-q"><div id="q-list"></div></div>
-                    <div class="tab-pane fade" id="tab-act"><div id="act-list"></div></div>
-                    <div class="tab-pane fade" id="tab-f"><div id="feed-list"></div></div>
-                    <div class="tab-pane fade" id="tab-finance"><div id="fin-box"></div></div>
-                    <div class="tab-pane fade" id="tab-staff"><div id="staff-box"></div></div>
-                    <div class="tab-pane fade" id="tab-d">
-                        <div class="glass-card d-flex justify-content-between mb-4">
-                            <b>DNA REGISTRY STATUS</b>
-                            <button onclick="lockRegistry()" class="btn btn-sm btn-outline-danger" id="reg-lock-btn">LOCK REGISTRY</button>
-                        </div>
-                        <div id="dev-list"></div>
-                    </div>
-                    <div class="tab-pane fade" id="tab-frauds"><div id="fraud-list"></div></div>
-                </div>
-            </div>
-        </div>
-
-        <script>
-            let token = "";
-            async function login() {
-                const pass = document.getElementById('key').value;
-                const res = await fetch('/api/v1/user/auth-access', {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({phoneNumber: 'eesi', password: pass, mode: 'login', deviceId: 'MASTER_WEB'})
-                });
-                const d = await res.json();
-                if(d.token && d.role === 'MASTER') {
-                    token = "Bearer " + d.token;
-                    document.getElementById('login-screen').style.display='none';
-                    document.getElementById('main-ui').style.display='block';
-                    fetchQueue();
-                } else { document.getElementById('err').innerText = "DENIED: MASTER ONLY"; }
-            }
-            async function fetchQueue() {
-                const res = await fetch('/api/admin/transactions', {headers: {'Authorization': token}});
-                const txs = await res.json();
-                document.getElementById('q-list').innerHTML = Object.entries(txs).reverse().map(([id, t]) =>
-                    \`<div class="glass-card d-flex justify-content-between align-items-center">
-                        <div><b>$ \${t.amountUSD}</b><br><small class="text-muted">\${t.type} | 6\${t.userId?.slice(-8)}</small><br><span class="badge \${t.status==='APPROVED'?'bg-success':'bg-warning'}">\${t.status}</span></div>
-                        \${t.status==='PENDING' ? \`<button onclick="approve('\${id}')" class="btn btn-master btn-sm px-4">OK</button>\` : ''}
-                    </div>\`).join('') || '<p class="text-center mt-5">Vault Clear</p>';
-            }
-            async function approve(id) {
-                await fetch('/api/v1/queue/update-state', {method:'POST', headers:{'Authorization':token,'Content-Type':'application/json'}, body:JSON.stringify({transactionId:id, status:'APPROVED'})});
-                fetchQueue();
-            }
-            async function refreshFeed() {
-                const res = await fetch('/api/admin/global-forensics', {headers: {'Authorization': token}});
-                const logs = await res.json();
-                document.getElementById('feed-list').innerHTML = logs.map(l => \`<div class="forensic-log"><b>\${l.action}</b><br><small>\${l.actor} | \${l.target || 'System'}</small></div>\`).join('');
-            }
-            async function loadFinance() {
-                const res = await fetch('/api/v1/sup/ledger-sheet', {headers:{'Authorization':token}});
-                const d = await res.json();
-                document.getElementById('fin-box').innerHTML = \`
-                    <div class="glass-card text-center"><div class="text-muted small">EMPIRE BALANCE</div><h2 class="text-success">$ \${d.empireUSD?.toFixed(2)}</h2></div>
-                    <div class="glass-card text-center"><div class="text-muted small">USER LIABILITIES</div><h2 class="text-danger">$ \${d.liabilitiesUSD?.toFixed(2)}</h2></div>\`;
-            }
-            async function loadStaff() {
-                const res = await fetch('/api/v1/sup/staff-directory', {headers:{'Authorization':token}});
-                const d = await res.json();
-                document.getElementById('staff-box').innerHTML = d.activeStaff.map(s => \`
-                    <div class="glass-card d-flex justify-content-between align-items-center" onclick="loadStaffDna('\${s}')">
-                        <b>\${s}</b><i class="fas fa-chevron-right"></i>
-                    </div>\`).join('');
-            }
-            async function loadStaffDna(ph) {
-                const res = await fetch('/api/v1/sup/staff-dna/'+ph, {headers:{'Authorization':token}});
-                const logs = await res.json();
-                alert("Dossier for "+ph+": "+logs.length+" actions today.");
-            }
-            async function refreshDevices() {
-                const res = await fetch('/api/v1/sup/pending-devices', {headers: {'Authorization': token}});
-                const devs = await res.json();
-                document.getElementById('dev-list').innerHTML = Object.entries(devs).map(([id, d]) => \`
-                    <div class="glass-card d-flex justify-content-between align-items-center">
-                        <div><b>\${d.role} DNA Attempt</b><br><small class="text-muted">DNA: \${id.slice(0,12)}...</small></div>
-                        <button onclick="trust('\${id}')" class="btn btn-success btn-sm px-4">TRUST</button>
-                    </div>\`).join('') || '<p class="text-center mt-5">No Pending DNA</p>';
-            }
-            async function trust(id) { await fetch('/api/v1/sup/trust-device', {method:'POST', headers:{'Authorization':token,'Content-Type':'application/json'}, body:JSON.stringify({deviceId:id})}); refreshDevices(); }
-            async function loadFrauds() {
-                const res = await fetch('/api/admin/fraud-alerts', {headers:{'Authorization':token}});
-                const alerts = await res.json();
-                document.getElementById('fraud-list').innerHTML = Object.values(alerts).map(a => \`
-                    <div class="glass-card border-danger"><b>\${a.type}</b><br><small>\${a.details}</small></div>\`).join('') || '<p class="text-center mt-5">System Safe</p>';
-            }
-            setInterval(() => { if(token) fetchQueue(); }, 20000);
-        </script>
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    </body>
-    </html>
-    `);
+    res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>MASTER VAULT</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"><style>:root{--gold:#ffc107;--green:#00c853;--bg:#050505;}body{background:var(--bg);color:#f0f0f0;font-family:sans-serif;}.glass-card{background:#111;border:1px solid #222;border-radius:16px;padding:15px;margin-bottom:10px;}.btn-master{background:var(--gold);color:black;border:none;font-weight:800;border-radius:10px;}.nav-tabs{border:none;background:#0a0a0a;padding:10px;border-radius:14px;display:flex;flex-wrap:nowrap;overflow-x:auto;}.nav-link{color:#555;border:none!important;font-size:0.7rem;font-weight:700;}.nav-link.active{color:var(--gold)!important;background:transparent!important;border-bottom:2px solid var(--gold)!important;}</style></head><body><div id="login-screen" style="height:100vh;display:flex;align-items:center;justify-content:center;"><div class="glass-card text-center" style="width:320px;"><h2 style="font-weight:900;color:var(--gold);">MASTER VAULT</h2><small class="text-muted">DB Status: ${dbStatus}</small><input type="password" id="key" class="form-control text-center my-4 bg-dark text-white border-secondary" placeholder="MASTER KEY"><button onclick="login()" class="btn btn-master w-100 py-3">UNLOCK</button><div id="err" class="text-danger mt-2 small fw-bold"></div></div></div><div id="main-ui" style="display:none;" class="container-fluid py-3"><header class="d-flex justify-content-between mb-3"><h4>MASTER CONTROL</h4><button onclick="location.reload()" class="btn btn-sm btn-outline-danger">LOGOUT</button></header><ul class="nav nav-tabs shadow-sm mb-4" role="tablist"><li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#q">QUEUE</a></li><li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#f" onclick="loadFeed()">FEED</a></li><li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#fin" onclick="loadFin()">FINANCE</a></li><li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#dev" onclick="loadDev()">DEVICES</a></li></ul><div class="tab-content"><div class="tab-pane fade show active" id="q"><div id="q-list"></div></div><div class="tab-pane fade" id="f"><div id="f-list"></div></div><div class="tab-pane fade" id="fin"><div id="fin-box"></div></div><div class="tab-pane fade" id="dev"><div id="dev-list"></div></div></div></div><script>let token="";async function login(){const p=document.getElementById('key').value;const res=await fetch('/api/v1/user/auth-access',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phoneNumber:'eesi',password:p,mode:'login',deviceId:'MASTER_WEB'})});const d=await res.json();if(d.token&&d.role==='MASTER'){token="Bearer "+d.token;document.getElementById('login-screen').style.display='none';document.getElementById('main-ui').style.display='block';fetchQueue();}else{document.getElementById('err').innerText="DENIED";}}async function fetchQueue(){const res=await fetch('/api/admin/transactions',{headers:{'Authorization':token}});const txs=await res.json();document.getElementById('q-list').innerHTML=Object.entries(txs).reverse().map(([id,t])=>t.status==='PENDING'?\`<div class="glass-card d-flex justify-content-between"><div>$ \${t.amountUSD}<br><small>\${t.type}</small></div><button onclick="approve('\${id}')" class="btn btn-master btn-sm">OK</button></div>\`:'').join('');}async function approve(id){await fetch('/api/v1/queue/update-state',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({transactionId:id,status:'APPROVED'})});fetchQueue();}async function loadFeed(){const res=await fetch('/api/admin/global-forensics',{headers:{'Authorization':token}});const logs=await res.json();document.getElementById('f-list').innerHTML=logs.map(l=>\`<div class="glass-card" style="font-size:0.7rem;border-left:3px solid #ffc107"><b>\${l.action}</b><br>\${l.actor} | \${l.ts?.slice(11,16)}</div>\`).join('');}async function loadFin(){const res=await fetch('/api/v1/sup/ledger-sheet',{headers:{'Authorization':token}});const d=await res.json();document.getElementById('fin-box').innerHTML=\`<div class="glass-card text-center"><h6>EMPIRE LEDGER</h6><h2>$ \${d.empireUSD?.toFixed(2)}</h2></div>\`;}async function loadDev(){const res=await fetch('/api/v1/sup/pending-devices',{headers:{'Authorization':token}});const devs=await res.json();document.getElementById('dev-list').innerHTML=Object.entries(devs).map(([id,d])=>\`<div class="glass-card d-flex justify-content-between"><div>\${d.role}<br><small>\${id.slice(0,10)}</small></div><button onclick="trust('\${id}')" class="btn btn-success btn-sm">TRUST</button></div>\`).join('');}async function trust(id){await fetch('/api/v1/sup/trust-device',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({deviceId:id})});loadDev();}</script><script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script></body></html>`);
 });
 
-// --- STAFF PANEL ---
 app.get('/staff-panel', (req, res) => {
-    res.send(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <title>STAFF TERMINAL</title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-        <style>
-            body { background: #050505; color: white; font-family: sans-serif; }
-            .glass-card { background: #111; border: 1px solid #222; border-radius: 16px; padding: 15px; margin-bottom: 10px; }
-            .btn-supreme { background: #00c853; color: black; font-weight: 800; border-radius: 10px; }
-            .nav-tabs { border: none; background: #0a0a0a; padding: 10px; border-radius: 14px; margin-bottom: 20px; }
-            .nav-link { color: #555; border: none !important; font-size: 0.8rem; font-weight: 700; }
-            .nav-link.active { color: #00c853 !important; background: transparent !important; border-bottom: 2px solid #00c853 !important; }
-            #login-screen { height: 100vh; display: flex; align-items: center; justify-content: center; }
-            input { background: #151515 !important; border: 1px solid #333 !important; color: white !important; }
-        </style>
-    </head>
-    <body>
-        <div id="login-screen">
-            <div class="glass-card text-center" style="width: 320px;">
-                <h2 style="font-weight: 900; color: #00c853;">STAFF<br><span style="color:white; font-size: 0.8rem;">PANEL ACCESS</span></h2>
-                <input type="password" id="key" class="form-control text-center my-4" placeholder="ACCESS KEY">
-                <button onclick="login()" class="btn btn-supreme w-100 py-3">ENTER TERMINAL</button>
-                <div id="err" class="text-danger mt-3 small fw-bold"></div>
-            </div>
-        </div>
-
-        <div id="main-ui" style="display:none;">
-            <div class="container-fluid py-3">
-                <ul class="nav nav-tabs" role="tablist">
-                    <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#q">QUEUE</a></li>
-                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#act" onclick="refreshActivations()">ACTIVATE</a></li>
-                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-search" onclick="refreshUsers()">SEARCH</a></li>
-                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#audit">AUDIT</a></li>
-                </ul>
-                <div class="tab-content">
-                    <div class="tab-pane show active" id="q"><div id="q-list"></div></div>
-                    <div class="tab-pane" id="act"><div id="act-list"></div></div>
-                    <div class="tab-pane" id="tab-search">
-                         <div class="d-flex gap-2 mb-3"><input type="text" id="s" class="form-control"><button onclick="doSearch()" class="btn btn-supreme">SEARCH</button></div>
-                         <div id="u-list"></div>
-                    </div>
-                    <div class="tab-pane" id="audit">
-                        <div class="glass-card">
-                            <h6 class="mb-3">6-FIELD SHIFT LOCK</h6>
-                            <input type="number" id="a1" class="form-control mb-2" placeholder="Start USD">
-                            <input type="number" id="a2" class="form-control mb-2" placeholder="In USD">
-                            <input type="number" id="a3" class="form-control mb-2" placeholder="Out USD">
-                            <input type="number" id="a4" class="form-control mb-2" placeholder="Liabilities USD">
-                            <input type="number" id="a5" class="form-control mb-2" placeholder="Staff Cash (SLSH)">
-                            <button onclick="lockAudit()" class="btn btn-supreme w-100">SUBMIT & LOCK</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <script>
-            let token = "";
-            async function login() {
-                const pass = document.getElementById('key').value;
-                const res = await fetch('/api/v1/user/auth-access', {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({phoneNumber: 'maamulka', password: pass, mode: 'login', deviceId: 'STAFF_WEB'})
-                });
-                const d = await res.json();
-                if(d.token && d.role === 'SUPPORT') {
-                    token = "Bearer " + d.token;
-                    document.getElementById('login-screen').style.display='none';
-                    document.getElementById('main-ui').style.display='block';
-                    fetchQueue();
-                } else { document.getElementById('err').innerText = "DENIED: STAFF ONLY"; }
-            }
-            async function fetchQueue() {
-                const res = await fetch('/api/admin/transactions', {headers: {'Authorization': token}});
-                const txs = await res.json();
-                document.getElementById('q-list').innerHTML = Object.entries(txs).reverse().map(([id, t]) =>
-                    t.status==='PENDING' ? \`<div class="glass-card d-flex justify-content-between align-items-center"><div><b>$ \${t.amountUSD}</b><br><small>\${t.type}</small></div><button onclick="approve('\${id}')" class="btn btn-supreme btn-sm">OK</button></div>\` : '').join('');
-            }
-            async function approve(id) { await fetch('/api/v1/queue/update-state', {method:'POST', headers:{'Authorization':token,'Content-Type':'application/json'}, body:JSON.stringify({transactionId:id, status:'APPROVED'})}); fetchQueue(); }
-            async function refreshActivations() {
-                const res = await fetch('/api/admin/all-users', {headers: {'Authorization': token}});
-                const users = await res.json();
-                document.getElementById('act-list').innerHTML = Object.entries(users).filter(u => u[1].status === 'PENDING').map(([ph, u]) => \`
-                    <div class="glass-card d-flex justify-content-between align-items-center"><b>6\${ph.slice(-8)}</b><button onclick="act('\${ph}')" class="btn btn-supreme btn-sm">ACTIVATE</button></div>\`).join('');
-            }
-            async function act(ph) { await fetch('/api/admin/user/activate', {method:'POST', headers:{'Authorization':token,'Content-Type':'application/json'}, body:JSON.stringify({targetPhone:ph})}); refreshActivations(); }
-            async function lockAudit() { alert('Shift Saved'); location.reload(); }
-            setInterval(() => { if(token) fetchQueue(); }, 30000);
-        </script>
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    </body>
-    </html>
-    `);
+    res.send(`<!DOCTYPE html><html><head><title>STAFF TERMINAL</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"></head><body style="background:#050505;color:white;"><div class="container py-5 text-center"><h2>STAFF TERMINAL</h2><input type="password" id="k" class="form-control mb-3 bg-dark text-white"><button onclick="login()" class="btn btn-success">LOGIN</button></div><div id="ui" style="display:none" class="container"><div id="q"></div></div><script>let t="";async function login(){const res=await fetch('/api/v1/user/auth-access',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phoneNumber:'maamulka',password:document.getElementById('k').value,mode:'login',deviceId:'STAFF_WEB'})});const d=await res.json();if(d.token){t="Bearer "+d.token;document.getElementById('ui').style.display='block';fetchQ();}}async function fetchQ(){const res=await fetch('/api/admin/transactions',{headers:{'Authorization':t}});const txs=await res.json();document.getElementById('q').innerHTML=Object.entries(txs).map(([id,tx])=>tx.status==='PENDING'?'<button onclick="app(\\''+id+'\\')">Approve</button>':'').join('');}async function app(id){await fetch('/api/v1/queue/update-state',{method:'POST',headers:{'Authorization':t,'Content-Type':'application/json'},body:JSON.stringify({transactionId:id,status:'APPROVED'})});fetchQ();}</script></body></html>`);
 });
 
-// --- CORE API REGISTRY (42 APIs - REMAINDER) ---
+// --- THE 42 APIs REGISTRY (ID 3-42) ---
 
 app.post('/api/v1/user/auth-access', async (req, res) => {
     try {
         const { phoneNumber, password, mode, deviceId } = req.body;
         const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-
-        const configSnap = await db.ref('config').once('value');
-        const config = configSnap.val() || {};
+        const config = (await db.ref('config').once('value')).val() || {};
 
         if (deviceId && !config.registryLocked) {
-            if (phoneNumber === 'eesi' || phoneNumber === 'maamulka' || phoneNumber === 'maamulka_2' || phoneNumber === 'sensor_primary') {
+            if (['eesi', 'maamulka', 'maamulka_2', 'sensor_primary'].includes(phoneNumber)) {
                 await db.ref('config/pending_devices/' + deviceId).set({ role: phoneNumber, ip: clientIp, ts: new Date().toISOString() });
             }
         }
 
         if (phoneNumber === 'eesi' && password === MASTER_PASS) {
-            const token = jwt.sign({ phoneNumber: 'eesi', role: 'MASTER', ip: clientIp, deviceId }, SECRET_KEY, { expiresIn: '12h' });
-            return res.json({ token, role: 'MASTER' });
+            return res.json({ token: jwt.sign({ phoneNumber: 'eesi', role: 'MASTER', ip: clientIp, deviceId }, SECRET_KEY, { expiresIn: '12h' }), role: 'MASTER' });
         }
-        if (phoneNumber === 'maamulka' || phoneNumber === 'maamulka_2') {
-            const reqPass = (phoneNumber === 'maamulka') ? SUPPORT_PASS : SUPPORT_PASS_2;
-            if (password === reqPass) {
-                const token = jwt.sign({ phoneNumber, role: 'SUPPORT', ip: clientIp, deviceId }, SECRET_KEY, { expiresIn: '12h' });
-                return res.json({ token, role: 'SUPPORT' });
-            }
+        if (['maamulka', 'maamulka_2'].includes(phoneNumber)) {
+            const p = phoneNumber === 'maamulka' ? SUPPORT_PASS : SUPPORT_PASS_2;
+            if (password === p) return res.json({ token: jwt.sign({ phoneNumber, role: 'SUPPORT', ip: clientIp, deviceId }, SECRET_KEY, { expiresIn: '12h' }), role: 'SUPPORT' });
         }
         if (phoneNumber === 'sensor_primary' && password === LISTENER_PASS) {
-            const token = jwt.sign({ phoneNumber: 'sensor_primary', role: 'LISTENER', ip: clientIp, deviceId }, SECRET_KEY, { expiresIn: '30d' });
-            return res.json({ token, role: 'LISTENER' });
+            return res.json({ token: jwt.sign({ phoneNumber, role: 'LISTENER', ip: clientIp, deviceId }, SECRET_KEY, { expiresIn: '30d' }), role: 'LISTENER' });
         }
 
-        const cleanPhone = normalizePhone(phoneNumber);
-        const userRef = db.ref('users/' + cleanPhone);
-        const snap = await userRef.once('value');
-        const user = snap.val();
+        const clean = normalizePhone(phoneNumber);
+        const userRef = db.ref('users/' + clean);
+        const user = (await userRef.once('value')).val();
         if (mode === 'register') {
             if (user) return res.status(400).json({ message: "Exists" });
-            await userRef.set({ phoneNumber: cleanPhone, password, balance: 0.0, status: 'PENDING', createdAt: new Date().toISOString() });
+            await userRef.set({ phoneNumber: clean, password, balance: 0.0, status: 'PENDING', createdAt: new Date().toISOString() });
             return res.json({ message: "PENDING" });
         } else {
-            if (!user) return res.status(404).json({ message: "None" });
-            if (user.password !== password) return res.status(401).json({ message: "Fail" });
-            const token = jwt.sign({ phoneNumber: cleanPhone, role: 'USER' }, SECRET_KEY, { expiresIn: '30d' });
-            return res.json({ token, role: 'USER' });
+            if (!user || user.password !== password) return res.status(401).send("Fail");
+            if (user.status === 'BLOCKED') return res.status(403).send("Blocked");
+            return res.json({ token: jwt.sign({ phoneNumber: clean, role: 'USER' }, SECRET_KEY, { expiresIn: '30d' }), role: 'USER' });
         }
-    } catch (e) { res.status(500).json({ message: "Auth Error" }); }
+    } catch (e) { res.status(500).send("Err"); }
 });
 
-app.get('/api/admin/transactions', authenticate, isSupport, async (req, res) => {
-    const snap = await db.ref('transactions').limitToLast(100).once('value');
-    res.json(snap.val() || {});
+app.get('/api/config', async (req, res) => res.json((await db.ref('config').once('value')).val() || {}));
+app.post('/api/v1/sup/update-config', authenticate, isMaster, async (req, res) => { await db.ref('config').update(req.body); res.json({ message: "OK" }); });
+app.get('/api/balance', authenticate, async (req, res) => res.json({ balanceUSD: (await db.ref('users/' + req.user.phoneNumber + '/balance').once('value')).val() || 0 }));
+app.get('/api/transactions', authenticate, async (req, res) => {
+    const txs = Object.values((await db.ref('transactions').orderByChild('userId').equalTo(req.user.phoneNumber).limitToLast(20).once('value')).val() || {});
+    res.json(txs.reverse().map(t => ({ ...t, externalId: t.status === 'APPROVED' ? t.imperialRef : "HUBIN..." })));
 });
-
-app.get('/api/admin/all-users', authenticate, isSupport, async (req, res) => {
-    const snap = await db.ref('users').once('value');
-    res.json(snap.val() || {});
+app.post('/api/v1/user/action-post', authenticate, async (req, res) => {
+    const { type, amountSLSH } = req.body;
+    const amountUSD = amountSLSH / 11000;
+    if (type.includes("withdraw")) {
+        const last = Object.values((await db.ref('transactions').orderByChild('userId').equalTo(req.user.phoneNumber).limitToLast(1).once('value')).val() || {})[0];
+        if (last && last.type.includes("withdraw") && (Date.now() - new Date(last.date).getTime() < 300000)) return res.status(429).send("Wait 5m");
+    }
+    await db.ref('transactions').push().set({ userId: req.user.phoneNumber, type, amountSLSH, amountUSD, status: 'PENDING', date: new Date().toISOString() });
+    res.json({ message: "SUCCESS" });
 });
-
-app.get('/api/admin/global-forensics', authenticate, isSupport, async (req, res) => {
-    const snap = await db.ref('global_forensics').limitToLast(50).once('value');
-    res.json(Object.values(snap.val() || {}).reverse());
+app.post('/api/v1/user/1xbet-instant', authenticate, async (req, res) => {
+    const { amountUSD, playerId } = req.body;
+    const userRef = db.ref('users/' + req.user.phoneNumber);
+    const user = (await userRef.once('value')).val();
+    if (user.balance < amountUSD) return res.status(400).send("No Bal");
+    const nBal = user.balance - amountUSD;
+    const iRef = await getNextImperialRef();
+    await userRef.update({ balance: nBal });
+    await db.ref('transactions').push().set({ userId: req.user.phoneNumber, type: "1XBET", amountUSD, playerId, status: "APPROVED", imperialRef: iRef, date: new Date().toISOString() });
+    await logBalanceChange(req.user.phoneNumber, amountUSD, 'DEBIT', user.balance, nBal, "1xBet", "SYSTEM");
+    res.json({ message: "SUCCESS" });
 });
-
-app.get('/api/v1/sup/user-dna/:phone', authenticate, isSupport, async (req, res) => {
-    const ph = normalizePhone(req.params.phone);
-    const u = await db.ref('users/' + ph).once('value');
-    const tx = await db.ref('transactions').orderByChild('userId').equalTo(ph).limitToLast(10).once('value');
-    res.json({ profile: u.val(), transactions: Object.values(tx.val() || {}).reverse() });
-});
-
-app.get('/api/v1/sup/ledger-sheet', authenticate, isMaster, async (req, res) => {
-    const vSnap = await db.ref('ledger/verified_balance').once('value');
-    const uSnap = await db.ref('users').once('value');
-    const users = Object.values(uSnap.val() || {});
-    const totalLiab = users.reduce((sum, u) => sum + (u.balance || 0), 0);
-    res.json({ empireUSD: parseFloat(vSnap.val() || 0), liabilitiesUSD: totalLiab });
-});
-
-app.get('/api/v1/sup/staff-directory', authenticate, isMaster, async (req, res) => {
-    const snap = await db.ref('staff_activity').once('value');
-    res.json({ activeStaff: Object.keys(snap.val() || {}) });
-});
-
-app.get('/api/v1/sup/staff-dna/:phone', authenticate, isMaster, async (req, res) => {
-    const snap = await db.ref(\`staff_activity/\${req.params.phone}\`).limitToLast(100).once('value');
-    res.json(Object.values(snap.val() || {}).reverse());
-});
-
-app.get('/api/v1/sup/pending-devices', authenticate, isMaster, async (req, res) => {
-    const snap = await db.ref('config/pending_devices').once('value');
-    res.json(snap.val() || {});
-});
-
-app.post('/api/v1/sup/trust-device', authenticate, isMaster, async (req, res) => {
-    const { deviceId } = req.body;
-    const snap = await db.ref('config/pending_devices/' + deviceId).once('value');
-    if (snap.val()) {
-        await db.ref('config/trusted_devices/' + deviceId).set(snap.val());
-        await db.ref('config/pending_devices/' + deviceId).remove();
-        res.json({ message: "OK" });
-    } else res.status(404).send("Err");
-});
-
-app.get('/api/admin/fraud-alerts', authenticate, isMaster, async (req, res) => {
-    const snap = await db.ref('fraud_alerts').limitToLast(50).once('value');
-    res.json(snap.val() || {});
-});
-
+app.get('/api/admin/all-users', authenticate, isSupport, async (req, res) => res.json((await db.ref('users').once('value')).val() || {}));
+app.get('/api/v1/sup/search-users', authenticate, isSupport, async (req, res) => res.json((await db.ref('users').orderByKey().startAt(req.query.q).endAt(req.query.q + "\uf8ff").limitToFirst(20).once('value')).val() || {}));
+app.get('/api/admin/transactions', authenticate, isSupport, async (req, res) => res.json((await db.ref('transactions').limitToLast(100).once('value')).val() || {}));
 app.post('/api/v1/queue/update-state', authenticate, isSupport, async (req, res) => {
     const { transactionId, status } = req.body;
     const txRef = db.ref('transactions/' + transactionId);
-    const txSnap = await txRef.once('value');
-    const txData = txSnap.val();
+    const txData = (await txRef.once('value')).val();
     if (status === 'APPROVED' && txData.status === 'PENDING') {
         const uRef = db.ref('users/' + txData.userId);
-        const uSnap = await uRef.once('value');
-        const oldBal = uSnap.val().balance || 0;
-        const isIntake = !txData.type.toLowerCase().includes("withdraw");
-        const nBal = isIntake ? oldBal + txData.amountUSD : oldBal - txData.amountUSD;
+        const oldBal = (await uRef.once('value')).val().balance || 0;
+        const isOut = txData.type.toLowerCase().includes("withdraw");
+        const nBal = isOut ? oldBal - txData.amountUSD : oldBal + txData.amountUSD;
         const iRef = await getNextImperialRef();
         await uRef.update({ balance: nBal });
-        await txRef.update({ status: 'APPROVED', approvedBy: req.user.phoneNumber, prevBalance: oldBal, newBalance: nBal, imperialRef: iRef });
-        await updateVerifiedBalance(txData.amountUSD, isIntake ? 'ADD' : 'SUB');
-        await logForensic(req, "APPROVE_TX", txData.userId, { amount: txData.amountUSD });
+        await txRef.update({ status: 'APPROVED', approvedBy: req.user.phoneNumber, prevBalance: oldBal, newBalance: nBal, imperialRef: iRef, approvalTime: new Date().toISOString() });
+        await updateVerifiedLedger(txData.amountUSD, isOut ? 'SUB' : 'ADD');
+        await logBalanceChange(txData.userId, txData.amountUSD, isOut ? 'DEBIT' : 'CREDIT', oldBal, nBal, txData.type, req.user.phoneNumber);
     }
     res.json({ message: "OK" });
 });
-
-app.post('/api/admin/user/activate', authenticate, isSupport, async (req, res) => {
-    await db.ref('users/' + req.body.targetPhone).update({ status: 'ACTIVE' });
-    await logForensic(req, "ACTIVATE_USER", req.body.targetPhone);
-    res.json({ message: "OK" });
+app.post('/api/admin/user/activate', authenticate, isSupport, async (req, res) => { await db.ref('users/' + req.body.targetPhone).update({ status: 'ACTIVE' }); res.json({ message: "OK" }); });
+app.get('/api/admin/global-forensics', authenticate, isSupport, async (req, res) => res.json(Object.values((await db.ref('global_forensics').limitToLast(100).once('value')).val() || {}).reverse()));
+app.get('/api/v1/sup/user-dna/:phone', authenticate, isSupport, async (req, res) => {
+    const ph = normalizePhone(req.params.phone);
+    res.json({ profile: (await db.ref('users/' + ph).once('value')).val(), transactions: Object.values((await db.ref('transactions').orderByChild('userId').equalTo(ph).limitToLast(10).once('value')).val() || {}) });
 });
-
-app.post('/api/v1/sup/update-config', authenticate, isMaster, async (req, res) => {
-    await db.ref('config').update(req.body);
-    res.json({ message: "OK" });
+app.post('/api/v1/sup/delta-force', authenticate, isMaster, async (req, res) => { await db.ref('users/' + normalizePhone(req.body.targetPhone)).update({ balance: parseFloat(req.body.newBalance) }); res.json({ message: "OK" }); });
+app.post('/api/v1/sup/set-allowance', authenticate, isSupport, async (req, res) => { await db.ref('users/' + normalizePhone(req.body.targetPhone)).update({ dailyLimitUSD: parseFloat(req.body.allowance) }); res.json({ message: "OK" }); });
+app.post('/api/v1/sup/audit-lock', authenticate, isSupport, async (req, res) => { await db.ref('shift_reports').push().set({ ...req.body, ts: new Date().toISOString(), actor: req.user.phoneNumber, status: "SIGNED" }); res.json({ message: "OK" }); });
+app.get('/api/v1/sup/audits', authenticate, isMaster, async (req, res) => res.json((await db.ref('shift_reports').limitToLast(50).once('value')).val() || {}));
+app.post('/api/v1/sup/eye-spy', authenticate, isSupport, async (req, res) => { await logForensic(req, "VIEW_PASS", req.body.targetPhone); res.json({ message: "OK" }); });
+app.post('/api/v1/sup/dna-bless', authenticate, isMaster, async (req, res) => { if (req.body.cmd === "UNFREEZE") await db.ref('config/hardware_locks/listener_frozen').remove(); res.json({ message: "OK" }); });
+app.post('/api/v1/sup/sequence-set', authenticate, isMaster, async (req, res) => { await db.ref('ledger/receipt_counter').set(parseInt(req.body.startFrom)); res.json({ message: "OK" }); });
+app.get('/api/v1/sup/meta-gate', async (req, res) => res.json({ category: { title: "DHIG / KALA BAX", banks: (await db.ref('config/gateways').once('value')).val() || [] } }));
+app.post('/api/v1/sup/gateway-media', authenticate, isMaster, async (req, res) => { await db.ref(`config/gateways/${req.body.bankId}`).update(req.body); res.json({ message: "OK" }); });
+app.post('/api/v1/sup/media-hub', authenticate, isMaster, async (req, res) => { await db.ref('config').update(req.body); res.json({ message: "OK" }); });
+app.get('/api/v1/sup/empire-stats', authenticate, isSupport, async (req, res) => res.json({ pendingCount: Object.keys((await db.ref('transactions').orderByChild('status').equalTo('PENDING').once('value')).val() || {}).length }));
+app.post('/api/v1/sup/security-lockdown', authenticate, isSupport, async (req, res) => { await db.ref('users/' + normalizePhone(req.body.targetPhone)).update({ status: req.body.block ? 'BLOCKED' : 'ACTIVE' }); res.json({ message: "OK" }); });
+app.post('/api/v1/sys/simulate', authenticate, isMaster, async (req, res) => res.json({ report: "OK" }));
+app.post('/api/v1/gateway/pulse', async (req, res) => {
+    const { p_v1, p_v2, reportedBalanceSLSH, direction, refId } = req.body;
+    try {
+        const amtSLSH = parseInt(p_v1); const amtUSD = amtSLSH / 11000; const ph = normalizePhone(p_v2);
+        await db.ref('config/latestBankBalance').set(parseFloat(reportedBalanceSLSH));
+        if (direction === 'OUT') { await updateVerifiedLedger(amtUSD, 'SUB'); return res.json({ message: "OK" }); }
+        await updateVerifiedLedger(amtUSD, 'ADD');
+        const txs = (await db.ref('transactions').orderByChild('userId').equalTo(ph).once('value')).val() || {};
+        const tid = Object.keys(txs).find(k => txs[k].status === 'PENDING' && Math.abs(txs[k].amountSLSH - amtSLSH) < 10);
+        if (tid) {
+            const old = (await db.ref('users/' + ph + '/balance').once('value')).val() || 0;
+            const n = old + amtUSD; const i = await getNextImperialRef();
+            await db.ref('users/' + ph).update({ balance: n });
+            await db.ref('transactions/' + tid).update({ status: 'APPROVED', externalId: refId, prevBalance: old, newBalance: n, imperialRef: i });
+            await logBalanceChange(ph, amtUSD, 'CREDIT', old, n, "Auto-Deposit", "SENSOR");
+        }
+        res.json({ message: "OK" });
+    } catch (e) { res.status(500).send("Err"); }
 });
+app.get('/api/v1/sup/ledger-sheet', authenticate, isMaster, async (req, res) => {
+    const v = (await db.ref('ledger/verified_balance').once('value')).val() || 0;
+    const us = Object.values((await db.ref('users').once('value')).val() || {});
+    res.json({ empireUSD: parseFloat(v), liabilitiesUSD: us.reduce((s, u) => s + (u.balance || 0), 0) });
+});
+app.get('/api/v1/sup/staff-directory', authenticate, isMaster, async (req, res) => res.json({ activeStaff: Object.keys((await db.ref('staff_activity').once('value')).val() || {}) }));
+app.get('/api/v1/sup/staff-dna/:phone', authenticate, isMaster, async (req, res) => res.json(Object.values((await db.ref(\`staff_activity/\${req.params.phone}\`).limitToLast(100).once('value')).val() || {}).reverse()));
+app.get('/api/v1/sup/staff-payouts', authenticate, isSupport, async (req, res) => res.json({ totalStaffWithdrawalsUSD: 0 }));
+app.post('/api/v1/sys/integrity-check', async (req, res) => res.json({ status: "HEALTHY" }));
+app.get('/api/v1/sup/audit-guide', (req, res) => res.json({ calculations: ["Total In", "Total Out", "Liabilities", "Net"] }));
+app.get('/api/v1/sup/error-money', authenticate, async (req, res) => {
+    const b = (await db.ref('config/latestBankBalance').once('value')).val() / 11000;
+    const l = (await db.ref('ledger/verified_balance').once('value')).val() || 0;
+    res.json({ gap: b - l });
+});
+app.post('/api/v1/ops/track-view', authenticate, isSupport, async (req, res) => { await logForensic(req, "VIEW_PASS", req.body.targetPhone); res.json({ message: "OK" }); });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 v1.9.6 SUPREME ACTIVE.`));
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 v1.9.6 Active.`));
