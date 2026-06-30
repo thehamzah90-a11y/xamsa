@@ -1,6 +1,6 @@
 {
   "name": "sarifkeena-supreme",
-  "version": "1.9.6",
+  "version": "1.9.7",
   "description": "Supreme Empire Master Backend",
   "main": "server.js",
   "scripts": {
