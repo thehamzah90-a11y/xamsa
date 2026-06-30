@@ -36,6 +36,7 @@ try {
 app.use(cors());
 app.use(bodyParser.json());
 
+// --- SUPREME UTILS ---
 const normalizePhone = (p) => {
     if (!p) return "";
     const clean = p.toString().replace(/\D/g, '');
@@ -83,6 +84,7 @@ const logForensic = async (req, action, target, details = {}) => {
     } catch (e) {}
 };
 
+// --- AUTH MIDDLEWARE ---
 const authenticate = async (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -116,25 +118,125 @@ const isMaster = (req, res, next) => {
 
 // --- MASTER VAULT HTML ---
 const masterHtml = `
-<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>MASTER VAULT</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-<style>:root{--gold:#ffc107;--bg:#050505;}body{background:var(--bg);color:#f0f0f0;font-family:sans-serif;}.card{background:#111;border:1px solid #222;border-radius:12px;margin-bottom:10px;}.btn-master{background:var(--gold);color:black;border:none;font-weight:800;border-radius:10px;}</style></head>
-<body><div id="login" style="height:100vh;display:flex;align-items:center;justify-content:center;"><div class="card p-4 text-center" style="width:320px;"><h2 style="color:var(--gold);">MASTER VAULT</h2><input type="password" id="k" class="form-control text-center my-3 bg-dark text-white border-secondary" placeholder="MASTER KEY"><button onclick="doLogin()" class="btn btn-master w-100">UNLOCK</button></div></div>
-<div id="ui" style="display:none;" class="container py-3"><h4>SARIFKEENA MASTER</h4><div id="q"></div></div>
-<script>let t="";async function doLogin(){const p=document.getElementById('k').value;const res=await fetch('/api/v1/user/auth-access',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phoneNumber:'eesi',password:p,mode:'login',deviceId:'MASTER_WEB'})});const d=await res.json();if(d.token&&d.role==='MASTER'){t="Bearer "+d.token;document.getElementById('login').style.display='none';document.getElementById('ui').style.display='block';}else{alert("Denied");}}</script></body></html>`;
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>SARIFKEENA MASTER VAULT</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>:root{--gold:#ffc107;--green:#00c853;--bg:#050505;}body{background:var(--bg);color:#f0f0f0;font-family:sans-serif;}.card{background:#111;border:1px solid #222;border-radius:16px;padding:15px;margin-bottom:12px;}.btn-master{background:var(--gold);color:black;border:none;font-weight:800;border-radius:10px;}.nav-tabs{border:none;background:#0a0a0a;padding:10px;border-radius:14px;margin-bottom:20px;display:flex;flex-wrap:nowrap;overflow-x:auto;}.nav-link{color:#555;border:none!important;font-size:0.7rem;font-weight:700;white-space:nowrap;}.nav-link.active{color:var(--gold)!important;background:transparent!important;border-bottom:2px solid var(--gold)!important;}#login{height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at center, #1a1a00, #000);}.forensic-log{font-size:0.7rem;border-left:3px solid var(--gold);padding:8px;background:#0a0a0a;margin-bottom:5px;}.badge-usd{background:rgba(255,193,7,0.1);color:var(--gold);border:1px solid var(--gold);}</style></head>
+<body>
+<div id="login"><div class="card text-center" style="width:320px;"><h2 style="font-weight:900;color:var(--gold);">MASTER VAULT</h2><small class="text-muted">DB: ${dbStatus}</small><input type="password" id="k" class="form-control text-center my-4 bg-dark text-white border-secondary" placeholder="MASTER KEY"><button onclick="doLogin()" class="btn btn-master w-100 py-3">UNLOCK VAULT</button><div id="err" class="text-danger mt-2 small fw-bold"></div></div></div>
+<div id="ui" style="display:none;" class="container-fluid py-3">
+<header class="d-flex justify-content-between mb-3 px-2"><h4>SARIFKEENA MASTER</h4><button onclick="location.reload()" class="btn btn-sm btn-outline-danger"><i class="fas fa-power-off"></i></button></header>
+<ul class="nav nav-tabs shadow-sm" role="tablist">
+<li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#q">QUEUE</a></li>
+<li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#act" onclick="refreshAct()">ACTIVATE</a></li>
+<li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#f" onclick="refreshFeed()">FEED</a></li>
+<li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#fin" onclick="loadFin()">FINANCE</a></li>
+<li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#staff" onclick="loadStaff()">STAFF</a></li>
+<li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#dev" onclick="loadDev()">DEVICES</a></li>
+<li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#sys">SYSTEM</a></li>
+</ul>
+<div class="tab-content">
+<div class="tab-pane fade show active" id="q"><div id="q-list"></div></div>
+<div class="tab-pane fade" id="act"><div id="act-list"></div></div>
+<div class="tab-pane fade" id="f"><div id="feed-list" style="max-height:70vh;overflow-y:auto;"></div></div>
+<div class="tab-pane fade" id="fin"><div id="fin-box"></div></div>
+<div class="tab-pane fade" id="staff"><div id="staff-box"></div></div>
+<div class="tab-pane fade" id="dev">
+<div class="card d-flex flex-row justify-content-between align-items-center"><b>DNA REGISTRY STATUS</b><button onclick="lockReg()" class="btn btn-sm btn-danger px-3">SEAL REGISTRY</button></div>
+<div id="dev-list"></div>
+</div>
+<div class="tab-pane fade" id="sys"><div class="card"><h6 class="mb-3 fw-bold">STEALTH CONTROLS</h6><button onclick="toggleGhost()" class="btn btn-outline-warning w-100 mb-2">TOGGLE REVIEWER MODE</button><input type="number" id="seq-val" class="form-control mb-2" placeholder="New Serial #"><button onclick="resetSeq()" class="btn btn-outline-light w-100">RESET SERIAL TO #000001</button></div></div>
+</div></div>
+<div class="modal fade" id="m" tabindex="-1"><div class="modal-dialog"><div class="modal-content bg-dark border-secondary"><div class="modal-header border-secondary text-white"><h5 id="m-title">Details</h5><button class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body" id="m-body"></div></div></div></div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let t=""; let curDna="";
+async function doLogin(){
+    const p=document.getElementById('k').value;
+    const res=await fetch('/api/v1/user/auth-access',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phoneNumber:'eesi',password:p,mode:'login',deviceId:'MASTER_WEB'})});
+    const d=await res.json();
+    if(d.token&&d.role==='MASTER'){
+        t="Bearer "+d.token; document.getElementById('login').style.display='none'; document.getElementById('ui').style.display='block'; fetchQ();
+    } else { document.getElementById('err').innerText="DENIED: MASTER ONLY"; }
+}
+async function fetchQ(){
+    const res=await fetch('/api/admin/transactions',{headers:{'Authorization':t}});
+    const txs=await res.json();
+    document.getElementById('q-list').innerHTML=Object.entries(txs).reverse().map(([id,x])=>\`
+        <div class="card d-flex flex-row justify-content-between align-items-center">
+            <div onclick="openUserDNA('\${x.userId}')" style="cursor:pointer"><b>$ \${x.amountUSD?.toFixed(2)}</b><br><small class="text-muted">\${x.type} | 6\${x.userId?.slice(-8)}</small></div>
+            \${x.status==='PENDING' ? \`<button onclick="app('\${id}')" class="btn btn-master btn-sm px-4">OK</button>\` : \`<span class="badge \${x.status==='APPROVED'?'bg-success':'bg-danger'}">\${x.status}</span>\`}
+        </div>\`).join('') || '<p class="text-center mt-5">Vault Clear</p>';
+}
+async function app(id){ await fetch('/api/v1/queue/update-state',{method:'POST',headers:{'Authorization':t,'Content-Type':'application/json'},body:JSON.stringify({transactionId:id,status:'APPROVED'})}); fetchQ(); }
+async function refreshAct(){
+    const res=await fetch('/api/admin/all-users',{headers:{'Authorization':t}});
+    const us=await res.json();
+    document.getElementById('act-list').innerHTML=Object.entries(us).filter(u=>u[1].status==='PENDING').map(([ph,u])=>\`
+        <div class="card d-flex flex-row justify-content-between align-items-center"><b>6\${ph.slice(-8)}</b><button onclick="actUser('\${ph}')" class="btn btn-master btn-sm px-4">ACTIVATE</button></div>\`).join('') || '<p class="text-center mt-5">No Pending Users</p>';
+}
+async function actUser(ph){ await fetch('/api/admin/user/activate',{method:'POST',headers:{'Authorization':t,'Content-Type':'application/json'},body:JSON.stringify({targetPhone:ph})}); refreshAct(); }
+async function refreshFeed(){
+    const res=await fetch('/api/admin/global-forensics',{headers:{'Authorization':t}});
+    const lgs=await res.json();
+    document.getElementById('feed-list').innerHTML=lgs.map(l=>\`<div class="forensic-log"><b>\${l.action}</b><br><small>\${l.actor} | \${l.target || 'System'} | \${l.ts?.slice(11,16)}</small></div>\`).join('');
+}
+async function loadFin(){
+    const res=await fetch('/api/v1/sup/ledger-sheet',{headers:{'Authorization':t}});
+    const d=await res.json();
+    document.getElementById('fin-box').innerHTML=\`
+        <div class="card text-center py-4 mb-3"><div class="text-muted small">EMPIRE VERIFIED BALANCE</div><h2 class="text-success fw-black">$ \${d.empireUSD?.toFixed(2)}</h2></div>
+        <div class="card text-center py-4"><div class="text-muted small">TOTAL USER LIABILITIES</div><h2 class="text-danger fw-black">$ \${d.liabilitiesUSD?.toFixed(2)}</h2></div>\`;
+}
+async function loadStaff(){
+    const res=await fetch('/api/v1/sup/staff-directory',{headers:{'Authorization':t}});
+    const d=await res.json();
+    document.getElementById('staff-box').innerHTML=d.activeStaff.map(s=>\`
+        <div class="card d-flex flex-row justify-content-between align-items-center" onclick="openStaffDNA('\${s}')" style="cursor:pointer">
+            <b>\${s.toUpperCase()}</b><i class="fas fa-chevron-right text-muted"></i>
+        </div>\`).join('');
+}
+async function openStaffDNA(ph){
+    const res=await fetch('/api/v1/sup/staff-dna/'+ph, {headers:{'Authorization':t}});
+    const lgs=await res.json();
+    document.getElementById('m-title').innerText="Staff DNA: "+ph;
+    document.getElementById('m-body').innerHTML=lgs.map(l=>\`<div class="forensic-log"><b>\${l.action}</b><br><small>\${l.target} | \${l.ts?.slice(0,16)}</small></div>\`).join('') || 'No Activity Found';
+    new bootstrap.Modal(document.getElementById('m')).show();
+}
+async function openUserDNA(ph){
+    const res=await fetch('/api/v1/sup/user-dna/'+ph, {headers:{'Authorization':t}});
+    const d=await res.json();
+    document.getElementById('m-title').innerText="User DNA: 6"+ph.slice(-8);
+    document.getElementById('m-body').innerHTML=\`
+        <div class="alert badge-usd text-center">Wallet: <b>$ \${d.profile.balance?.toFixed(2)}</b></div>
+        <button onclick="ban('\${ph}', true)" class="btn btn-danger w-100 mb-2">BAN ACCOUNT</button>
+        <button onclick="ban('\${ph}', false)" class="btn btn-success w-100 mb-3">RESTORE ACCOUNT</button>
+        <h6 class="small fw-bold">LAST ACTIONS</h6>
+        \${d.transactions?.slice(0,10).map(tx=>\`<div class="forensic-log">\${tx.type} | $\${tx.amountUSD} | \${tx.status}</div>\`).join('')}\`;
+    new bootstrap.Modal(document.getElementById('m')).show();
+}
+async function ban(ph, b){ await fetch('/api/v1/sup/security-lockdown',{method:'POST',headers:{'Authorization':t,'Content-Type':'application/json'},body:JSON.stringify({targetPhone:ph, block:b})}); alert('Security Status Updated'); }
+async function loadDev(){
+    const res=await fetch('/api/v1/sup/pending-devices',{headers:{'Authorization':t}});
+    const ds=await res.json();
+    document.getElementById('dev-list').innerHTML=Object.entries(ds).map(([id,d])=>\`
+        <div class="card d-flex flex-row justify-content-between align-items-center">
+            <div><b>\${d.role} Login</b><br><small class="text-muted">ID: \${id.slice(0,12)}...</small></div>
+            <button onclick="trust('\${id}')" class="btn btn-success btn-sm px-4">TRUST</button>
+        </div>\`).join('') || '<p class="text-center mt-5">No Pending DNA</p>';
+}
+async function trust(id){ await fetch('/api/v1/sup/trust-device',{method:'POST',headers:{'Authorization':t,'Content-Type':'application/json'},body:JSON.stringify({deviceId:id})}); loadDev(); }
+async function lockReg(){ if(confirm("Seal DNA Registry Forever?")) await fetch('/api/v1/sup/update-config',{method:'POST',headers:{'Authorization':t,'Content-Type':'application/json'},body:JSON.stringify({registryLocked:true})}); }
+async function toggleGhost(){ await fetch('/api/v1/sup/update-config',{method:'POST',headers:{'Authorization':t,'Content-Type':'application/json'},body:JSON.stringify({globalReviewerMode:true})}); alert('Ghost Mode Active'); }
+async function resetSeq(){ const v=document.getElementById('seq-val').value; if(v) await fetch('/api/v1/sup/sequence-set',{method:'POST',headers:{'Authorization':t,'Content-Type':'application/json'},body:JSON.stringify({startFrom:v})}); alert('Serial Reset'); }
+setInterval(()=>{if(t)fetchQ();},20000);
+</script></body></html>`;
 
-// --- STAFF TERMINAL HTML ---
-const staffHtml = `
-<!DOCTYPE html><html><head><title>STAFF TERMINAL</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"></head>
-<body style="background:#050505;color:white;padding:20px;"><div id="login" class="text-center"><h2>STAFF TERMINAL</h2><input type="password" id="k" class="form-control mb-3 bg-dark text-white" placeholder="ACCESS KEY"><button onclick="doLogin()" class="btn btn-success">LOGIN</button></div>
-<div id="ui" style="display:none;"><h3>OPERATIONS</h3><div id="q"></div></div>
-<script>let t="";async function doLogin(){const res=await fetch('/api/v1/user/auth-access',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phoneNumber:'maamulka',password:document.getElementById('k').value,mode:'login',deviceId:'STAFF_WEB'})});const d=await res.json();if(d.token){t="Bearer "+d.token;document.getElementById('login').style.display='none';document.getElementById('ui').style.display='block';}}</script></body></html>`;
+const staffHtml = `<!DOCTYPE html><html><head><title>STAFF TERMINAL</title></head><body style="background:#050505;color:white;text-align:center;padding:50px;"><h1>STAFF TERMINAL</h1><p>Operational access pending.</p></body></html>`;
 
 app.get('/master-vault', (req, res) => res.send(masterHtml));
 app.get('/staff-panel', (req, res) => res.send(staffHtml));
 
-// --- 42 SUPREME APIs ---
-app.get('/', (req, res) => res.send("v1.9.6 SARIFKEENA ACTIVE"));
+// --- 42 SUPREME APIs REGISTRY ---
 
 app.post('/api/v1/user/auth-access', async (req, res) => {
     try {
@@ -180,23 +282,7 @@ app.get('/api/transactions', authenticate, async (req, res) => {
 app.post('/api/v1/user/action-post', authenticate, async (req, res) => {
     if (!db) return res.status(503).send("Offline");
     const { type, amountSLSH } = req.body;
-    if (type.includes("withdraw")) {
-        const last = Object.values((await db.ref('transactions').orderByChild('userId').equalTo(req.user.phoneNumber).limitToLast(1).once('value')).val() || {})[0];
-        if (last && last.type.includes("withdraw") && (Date.now() - new Date(last.date).getTime() < 300000)) return res.status(429).send("Wait 5m");
-    }
     await db.ref('transactions').push().set({ userId: req.user.phoneNumber, type, amountSLSH, amountUSD: amountSLSH / 11000, status: 'PENDING', date: new Date().toISOString() });
-    res.json({ message: "SUCCESS" });
-});
-app.post('/api/v1/user/1xbet-instant', authenticate, async (req, res) => {
-    if (!db) return res.status(503).send("Offline");
-    const { amountUSD, playerId } = req.body;
-    const userRef = db.ref('users/' + req.user.phoneNumber);
-    const user = (await userRef.once('value')).val();
-    if (user.balance < amountUSD) return res.status(400).send("No Bal");
-    const nBal = user.balance - amountUSD; const iRef = await getNextImperialRef();
-    await userRef.update({ balance: nBal });
-    await db.ref('transactions').push().set({ userId: req.user.phoneNumber, type: "1XBET", amountUSD, playerId, status: "APPROVED", imperialRef: iRef, prevBalance: user.balance, newBalance: nBal, date: new Date().toISOString() });
-    await logBalanceChange(req.user.phoneNumber, amountUSD, 'DEBIT', user.balance, nBal, "1xBet", "SYSTEM");
     res.json({ message: "SUCCESS" });
 });
 
@@ -222,46 +308,10 @@ app.post('/api/v1/queue/update-state', authenticate, isSupport, async (req, res)
 app.post('/api/admin/user/activate', authenticate, isSupport, async (req, res) => { if (db) await db.ref('users/' + req.body.targetPhone).update({ status: 'ACTIVE' }); res.json({ message: "OK" }); });
 app.get('/api/admin/global-forensics', authenticate, isSupport, async (req, res) => res.json(db ? Object.values((await db.ref('global_forensics').limitToLast(100).once('value')).val() || {}).reverse() : []));
 app.get('/api/v1/sup/user-dna/:phone', authenticate, isSupport, async (req, res) => { if (!db) return res.json({}); const ph = normalizePhone(req.params.phone); res.json({ profile: (await db.ref('users/' + ph).once('value')).val(), transactions: Object.values((await db.ref('transactions').orderByChild('userId').equalTo(ph).limitToLast(10).once('value')).val() || {}) }); });
-app.post('/api/v1/sup/delta-force', authenticate, isMaster, async (req, res) => { if (db) await db.ref('users/' + normalizePhone(req.body.targetPhone)).update({ balance: parseFloat(req.body.newBalance) }); res.json({ message: "OK" }); });
-app.post('/api/v1/sup/set-allowance', authenticate, isSupport, async (req, res) => { if (db) await db.ref('users/' + normalizePhone(req.body.targetPhone)).update({ dailyLimitUSD: parseFloat(req.body.allowance) }); res.json({ message: "OK" }); });
-app.post('/api/v1/sup/audit-lock', authenticate, isSupport, async (req, res) => { if (db) await db.ref('shift_reports').push().set({ ...req.body, ts: new Date().toISOString(), actor: req.user.phoneNumber, status: "SIGNED" }); res.json({ message: "OK" }); });
-app.get('/api/v1/sup/audits', authenticate, isMaster, async (req, res) => res.json(db ? (await db.ref('shift_reports').limitToLast(50).once('value')).val() || {} : {}));
-app.post('/api/v1/sup/dna-bless', authenticate, isMaster, async (req, res) => { if (db && req.body.cmd === "UNFREEZE") await db.ref('config/hardware_locks/listener_frozen').remove(); res.json({ message: "OK" }); });
-app.post('/api/v1/sup/sequence-set', authenticate, isMaster, async (req, res) => { if (db) await db.ref('ledger/receipt_counter').set(parseInt(req.body.startFrom)); res.json({ message: "OK" }); });
-app.get('/api/v1/sup/meta-gate', async (req, res) => res.json({ category: { title: "DHIG / KALA BAX", banks: db ? (await db.ref('config/gateways').once('value')).val() || [] : [] } }));
-app.post('/api/v1/sup/gateway-media', authenticate, isMaster, async (req, res) => { if (db) await db.ref('config/gateways/' + req.body.bankId).update(req.body); res.json({ message: "OK" }); });
-app.post('/api/v1/sup/media-hub', authenticate, isMaster, async (req, res) => { if (db) await db.ref('config').update(req.body); res.json({ message: "OK" }); });
-app.get('/api/v1/sup/empire-stats', authenticate, isSupport, async (req, res) => { if (!db) return res.json({ pendingCount: 0 }); const tx = await db.ref('transactions').orderByChild('status').equalTo('PENDING').once('value'); res.json({ pendingCount: Object.keys(tx.val() || {}).length }); });
-app.post('/api/v1/sup/security-lockdown', authenticate, isSupport, async (req, res) => { if (db) await db.ref('users/' + normalizePhone(req.body.targetPhone)).update({ status: req.body.block ? 'BLOCKED' : 'ACTIVE' }); res.json({ message: "OK" }); });
-app.post('/api/v1/sys/simulate', authenticate, isMaster, async (req, res) => res.json({ report: "OK" }));
-app.post('/api/v1/gateway/pulse', async (req, res) => {
-    if (!db) return res.status(503).send("Offline");
-    const { p_v1, p_v2, reportedBalanceSLSH, direction, refId } = req.body;
-    try {
-        const amtSLSH = parseInt(p_v1); const amtUSD = amtSLSH / 11000; const ph = normalizePhone(p_v2);
-        await db.ref('config/latestBankBalance').set(parseFloat(reportedBalanceSLSH));
-        if (direction === 'OUT') { await updateVerifiedLedger(amtUSD, 'SUB'); return res.json({ message: "OK" }); }
-        await updateVerifiedLedger(amtUSD, 'ADD');
-        const txs = (await db.ref('transactions').orderByChild('userId').equalTo(ph).once('value')).val() || {};
-        const tid = Object.keys(txs).find(k => txs[k].status === 'PENDING' && Math.abs(txs[k].amountSLSH - amtSLSH) < 10);
-        if (tid) {
-            const old = (await db.ref('users/' + ph + '/balance').once('value')).val() || 0;
-            const n = old + amtUSD; const i = await getNextImperialRef();
-            await db.ref('users/' + ph).update({ balance: n });
-            await db.ref('transactions/' + tid).update({ status: 'APPROVED', externalId: refId, prevBalance: old, newBalance: n, imperialRef: i });
-        }
-        res.json({ message: "OK" });
-    } catch (e) { res.status(500).send("Err"); }
-});
+app.post('/api/v1/sup/trust-device', authenticate, isMaster, async (req, res) => { if (!db) return res.status(503).send("Offline"); const snap = await db.ref('config/pending_devices/' + req.body.deviceId).once('value'); if (snap.val()) { await db.ref('config/trusted_devices/' + req.body.deviceId).set(snap.val()); await db.ref('config/pending_devices/' + req.body.deviceId).remove(); res.json({ message: "OK" }); } else res.status(404).send("Err"); });
+app.get('/api/v1/sup/pending-devices', authenticate, isMaster, async (req, res) => res.json(db ? (await db.ref('config/pending_devices').once('value')).val() || {} : {}));
 app.get('/api/v1/sup/ledger-sheet', authenticate, isMaster, async (req, res) => { if (!db) return res.json({}); const v = (await db.ref('ledger/verified_balance').once('value')).val() || 0; const us = Object.values((await db.ref('users').once('value')).val() || {}); res.json({ empireUSD: parseFloat(v), liabilitiesUSD: us.reduce((s, u) => s + (u.balance || 0), 0) }); });
 app.get('/api/v1/sup/staff-directory', authenticate, isMaster, async (req, res) => res.json({ activeStaff: db ? Object.keys((await db.ref('staff_activity').once('value')).val() || {}) : [] }));
-app.get('/api/v1/sup/staff-dna/:phone', authenticate, isMaster, async (req, res) => res.json(db ? Object.values((await db.ref('staff_activity/' + req.params.phone).limitToLast(100).once('value')).val() || {}).reverse() : []));
-app.get('/api/v1/sup/staff-payouts', authenticate, isSupport, async (req, res) => res.json({ totalStaffWithdrawalsUSD: 0 }));
-app.post('/api/v1/sys/integrity-check', async (req, res) => res.json({ status: "HEALTHY" }));
-app.get('/api/v1/sup/audit-guide', (req, res) => res.json({ calculations: ["Total In", "Total Out", "Liabilities", "Net"] }));
-app.get('/api/v1/sup/error-money', authenticate, async (req, res) => { if (!db) return res.json({ gap: 0 }); const b = (await db.ref('config/latestBankBalance').once('value')).val() / 11000; const l = (await db.ref('ledger/verified_balance').once('value')).val() || 0; res.json({ gap: b - l }); });
-app.get('/api/v1/sup/pending-devices', authenticate, isMaster, async (req, res) => res.json(db ? (await db.ref('config/pending_devices').once('value')).val() || {} : {}));
-app.post('/api/v1/sup/trust-device', authenticate, isMaster, async (req, res) => { if (!db) return res.status(503).send("Offline"); const snap = await db.ref('config/pending_devices/' + req.body.deviceId).once('value'); if (snap.val()) { await db.ref('config/trusted_devices/' + req.body.deviceId).set(snap.val()); await db.ref('config/pending_devices/' + req.body.deviceId).remove(); res.json({ message: "OK" }); } else res.status(404).send("Err"); });
-app.post('/api/v1/ops/track-view', authenticate, isSupport, async (req, res) => { await logForensic(req, "VIEW_PASS", req.body.targetPhone); res.json({ message: "OK" }); });
+app.get('/api/v1/sup/staff-dna/:phone', authenticate, isMaster, async (req, res) => { if (!db) return res.json([]); const ph = req.params.phone; const snap = await db.ref('staff_activity/' + ph).limitToLast(100).once('value'); res.json(Object.values(snap.val() || {}).reverse()); });
 
 app.listen(PORT, '0.0.0.0', () => console.log(`🚀 v1.9.6 Active.`));
